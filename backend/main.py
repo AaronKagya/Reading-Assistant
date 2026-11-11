@@ -10,7 +10,7 @@ from .neural_speech import NeuralSpeechRequest, synthesize_neural
 
 app = FastAPI(title="Reading Assistant API", version="0.1.0")
 
-@app.get("/", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 def reader_home():
     return FileResponse(Path(__file__).resolve().parent.parent / "frontend" / "index.html")
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
