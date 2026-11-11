@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from backend.tutor import select_source, explain_as_tutor
 
 def test_select_source():
@@ -11,8 +12,7 @@ def test_empty_source():
     with pytest.raises(ValueError):
         select_source([{"page": 1, "text": "   "}])
 
-@pytest.mark.asyncio
-async def test_missing_api_key(monkeypatch):
+def test_missing_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-        await explain_as_tutor("A valid excerpt")
+        asyncio.run(explain_as_tutor("A valid excerpt"))
