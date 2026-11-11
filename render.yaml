@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: reading-assistant-beta
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TUTOR_MODEL
+        value: gpt-4o-mini
