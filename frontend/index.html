@@ -26,7 +26,8 @@ function voices(){
  const list=window.speechSynthesis.getVoices();
  const previous=selectedVoiceURI||$('voice').value;
  $('voice').replaceChildren();
- const preferred=list.filter(v=>/^en([_-]|$)/i.test(v.lang)).sort((a,b)=>Number(b.localService)-Number(a.localService));
+ const quality=v=>/natural|neural|premium|google|microsoft|samantha|aria|jenny|guy/i.test(v.name)?2:(v.localService?1:0);
+ const preferred=list.filter(v=>/^en([_-]|$)/i.test(v.lang)).sort((a,b)=>quality(b)-quality(a));
  const others=list.filter(v=>!/^en([_-]|$)/i.test(v.lang));
  for(const v of [...preferred,...others]){const o=document.createElement('option');o.value=v.voiceURI;o.textContent=v.name+' ('+v.lang+')'+(v.localService?' — installed':'');$('voice').append(o)}
  if(!list.length){const o=document.createElement('option');o.value='';o.textContent='System default (voices still loading)';$('voice').append(o)}
