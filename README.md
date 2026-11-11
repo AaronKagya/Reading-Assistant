@@ -34,3 +34,6 @@ Chapter segmentation, async jobs, responsive reader, narration modes, caching, c
 
 ## Research
 `reading_assistant.ipynb` is the original LJSpeech/PyTorch experiment and remains untouched.
+
+## Tutor reading mode
+Set both `OPENAI_API_KEY` and `ELEVENLABS_API_KEY` as environment variables. Optionally set `TUTOR_MODEL` (default `gpt-4o-mini`). Do not commit credentials. `POST /tutor-preview-text` accepts a PDF and returns the source excerpt and tutor script. `POST /tutor-preview-audio` accepts a PDF and ElevenLabs `voice_id` as multipart form fields and returns MP3. The first version uses only a short excerpt, not a complete PDF. Review tutor explanations against the source: automated rewriting can introduce errors. Each generation may incur API costs.
