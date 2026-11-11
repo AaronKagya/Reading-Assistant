@@ -2,12 +2,16 @@ import os
 import tempfile
 from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, UploadFile, Form
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from .pdf_processor import extract_pages
 from .narration import preview_text, synthesize
 from .tutor import select_source, explain_as_tutor
 
 app = FastAPI(title="Reading Assistant API", version="0.1.0")
+
+@app.get("/", include_in_schema=False)
+def reader_home():
+    return FileResponse(Path(__file__).resolve().parent.parent / "frontend" / "index.html")
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 
 async def read_pdf(upload: UploadFile) -> list[dict]:
