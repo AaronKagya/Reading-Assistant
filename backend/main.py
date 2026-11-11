@@ -34,6 +34,15 @@ async def read_pdf(upload: UploadFile) -> list[dict]:
 def health():
     return {"status": "ok"}
 
+@app.post("/document-text")
+async def document_text_endpoint(file: UploadFile = File(...)):
+    """Return selectable PDF text by page for client-side narration.
+
+    No PDF content is persisted after extraction.
+    """
+    pages = await read_pdf(file)
+    return {"pages": pages, "pages_with_text": len(pages)}
+
 @app.post("/preview-text")
 async def preview_text_endpoint(file: UploadFile = File(...)):
     pages = await read_pdf(file)
