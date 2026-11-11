@@ -5,6 +5,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.responses import Response
 from .pdf_processor import extract_pages
 from .narration import preview_text, synthesize
+from .tutor import select_source, explain_as_tutor
 
 app = FastAPI(title="Reading Assistant API", version="0.1.0")
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
@@ -46,3 +47,32 @@ async def preview_audio_endpoint(file: UploadFile = File(...), voice_id: str = F
     except Exception:
         raise HTTPException(502, "Speech provider request failed")
     return Response(content=audio, media_type="audio/mpeg", headers={"Content-Disposition": 'attachment; filename="preview.mp3"'})
+
+@app.post("/tutor-preview-text")
+async def tutor_preview_text(file: UploadFile = File(...)):
+    pages = await read_pdf(file)
+    source = select_source(pages)
+    try:
+        explanation = await explain_as_tutor(source)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception:
+        raise HTTPException(502, "Tutor provider request failed")
+    return {"source_excerpt": source, "tutor_script": explanation, "mode": "tutor"}
+
+@app.post("/tutor-preview-audio")
+async def tutor_preview_audio(file: UploadFile = File(...), voice_id: str = Form(...)):
+    pages = await read_pdf(file)
+    source = select_source(pages)
+    try:
+        explanation = await explain_as_tutor(source)
+        audio = await synthesize(explanation, voice_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception:
+        raise HTTPException(502, "Tutor or speech provider request failed")
+    return Response(content=audio, media_type="audio/mpeg", headers={"Content-Disposition": 'attachment; filename="tutor-preview.mp3"'})
