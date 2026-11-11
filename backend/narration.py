@@ -5,7 +5,7 @@ import httpx
 MAX_CHARS = 3000
 
 def preview_text(pages: list[dict], max_chars: int = 700) -> str:
-    text = " ".join(re.sub(r"\\s+", " ", page["text"]) for page in pages)
+    text = " ".join(" ".join(page["text"].split()) for page in pages)
     if not text.strip():
         raise ValueError("No text to narrate")
     return text[:max_chars].rsplit(" ", 1)[0] or text[:max_chars]
