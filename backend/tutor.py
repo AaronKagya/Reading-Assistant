@@ -49,7 +49,7 @@ async def explain_as_tutor(source: str) -> str:
     script = data["choices"][0]["message"]["content"]
     if not isinstance(script, str) or not script.strip():
         raise RuntimeError("Tutor model returned no explanation")
-    script = re.sub(r"\\s+", " ", script).strip()
+    script = " ".join(script.split()).strip()
     if len(script) > MAX_SCRIPT_CHARS:
         raise RuntimeError("Tutor explanation exceeded length limit")
     return script
