@@ -14,12 +14,12 @@ small{color:#637087}.error{color:#b42318}#status{min-height:1.5em}
 <label for="mode">Reading style</label><select id="mode"><option value="original">Original reader — exact text</option><option value="tutor">Friendly tutor — explained simply</option></select>
 <label for="voice">Voice available on this device</label><select id="voice"><option>Loading device voices…</option></select>
 <label for="rate">Speaking speed</label><select id="rate"><option value="0.85">Relaxed</option><option value="1" selected>Normal</option><option value="1.15">Fast</option></select>
-<button id="testvoice" type="button">🔊 Test voice on this PC</button><button id="prepare">Prepare document</button><div id="status" role="status"></div></section>
+<div id="neuraloptions" hidden><label for="neuralvoice">Neural narrator</label><select id="neuralvoice"><option value="af_heart">Heart — American English</option><option value="af_bella">Bella — American English</option><option value="am_adam">Adam — American English</option><option value="bf_emma">Emma — British English</option></select><button id="neuralplay" type="button" disabled>✨ Play current page with neural voice</button><audio id="neuralplayer" controls style="width:100%;margin-top:10px"></audio><small>Neural audio generates the current page in short excerpts. Available only when the neural service is configured.</small></div><button id="testvoice" type="button">🔊 Test voice on this PC</button><button id="prepare">Prepare document</button><div id="status" role="status"></div></section>
 <section class="card"><h2>Listen</h2><div id="pagecontrols" hidden><label for="page">Document page</label><select id="page"></select><small id="progress"></small></div><small id="source"></small><pre id="script">Upload a PDF to prepare your first audio preview.</pre>
 <div class="actions"><button id="play" disabled>▶ Play</button><button id="pause" disabled>⏸ Pause</button><button id="stop" disabled>■ Stop</button><button id="next" disabled>Next page →</button></div><p><small id="speechstatus" role="status">Audio idle</small></p>
 <p><small>Uses your phone's built-in speech engine. Voice quality and offline support depend on your device and browser. Keep this page open during playback. Tutor mode requires a configured server API key.</small></p></section></main>
 <script>
-const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;let playbackGeneration=0;
+const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;let playbackGeneration=0;let neuralObjectURL=null;
 function setStatus(message,isError=false){$('status').textContent=message;$('status').className=isError?'error':''}
 function voices(){
  if(!('speechSynthesis' in window))return;
@@ -36,7 +36,7 @@ function voices(){
  else if(preferred.length)$('voice').value=preferred[0].voiceURI;
  selectedVoiceURI=$('voice').value;
 }
-function stopSpeech(){playbackGeneration++;active=false;paused=false;readingDocument=false;chunkIndex=0;utterance=null;if('speechSynthesis' in window)window.speechSynthesis.cancel();$('speechstatus').textContent='Stopped';$('pause').textContent='⏸ Pause'}
+function stopSpeech(){const player=$('neuralplayer');player.pause();player.removeAttribute('src');player.load();if(neuralObjectURL){URL.revokeObjectURL(neuralObjectURL);neuralObjectURL=null}playbackGeneration++;active=false;paused=false;readingDocument=false;chunkIndex=0;utterance=null;if('speechSynthesis' in window)window.speechSynthesis.cancel();$('speechstatus').textContent='Stopped';$('pause').textContent='⏸ Pause'}
 function splitSpeech(text){
  const sentences=text.match(/[^.!?;\n]+[.!?;\n]*/g)||[text],out=[];
  for(const sentence of sentences){
@@ -106,10 +106,22 @@ $('prepare').onclick=async()=>{
    $('script').textContent=script;$('source').textContent='AI-generated explanation of a short excerpt — verify against the PDF';
   }
   if(!script||!script.trim())throw Error('No readable text found');
-  $('play').disabled=false;$('pause').disabled=false;$('stop').disabled=false;
+  $('play').disabled=false;$('pause').disabled=false;$('stop').disabled=false;$('neuralplay').disabled=false;
   setStatus(mode==='original'?'Document ready · '+documentPages.length+' readable pages':'Tutor preview ready');
  }catch(e){setStatus(e.message,true)}finally{$('prepare').disabled=false}
 };
+$('neuralplay').onclick=async()=>{
+ if(!script.trim())return;
+ stopSpeech();const button=$('neuralplay');button.disabled=true;setStatus('Generating neural audio for the first 800 characters of this page…');
+ try{
+  const res=await fetch('/neural-speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:script.slice(0,800),voice:$('neuralvoice').value,speed:Number($('rate').value)})});
+  if(!res.ok){let detail='Neural voice request failed';try{detail=(await res.json()).detail||detail}catch(e){}throw Error(detail)}
+  const blob=await res.blob();neuralObjectURL=URL.createObjectURL(blob);
+  $('neuralplayer').src=neuralObjectURL;await $('neuralplayer').play();
+  setStatus('Neural audio ready · first 800 characters of the selected page');
+ }catch(e){setStatus(e.message,true)}finally{button.disabled=false}
+};
+fetch('/neural-status').then(r=>r.ok?r.json():{enabled:false}).then(data=>{$('neuraloptions').hidden=!data.enabled}).catch(()=>{});
 $('play').onclick=()=>startSpeech(script);
 $('stop').onclick=stopSpeech;
 window.addEventListener('pagehide',stopSpeech);
