@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reading Assistant</title><style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#17233b;background:#f3f6fc}
+body{margin:0}main{max-width:620px;margin:auto;padding:22px 16px 60px}h1{font-size:1.8rem;margin-bottom:6px}
+p{color:#526178;line-height:1.5}.card{background:white;border:1px solid #dce4ef;border-radius:18px;padding:20px;margin:16px 0}
+label{display:block;font-weight:650;margin:14px 0 7px}input,select,button{font:inherit;width:100%;box-sizing:border-box;padding:13px;border-radius:12px;border:1px solid #b8c7d9}
+button{background:#2455d6;color:white;border:0;font-weight:700;margin-top:12px;cursor:pointer}button:disabled{opacity:.55}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.actions button{margin-top:8px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:290px;overflow:auto;line-height:1.5;font-family:inherit}
+small{color:#637087}.error{color:#b42318}#status{min-height:1.5em}
+</style></head><body><main><h1>🎧 Reading Assistant</h1><p>Turn your study PDFs into spoken lessons, right on your phone.</p>
+<section class="card"><label for="pdf">Choose a PDF</label><input id="pdf" type="file" accept="application/pdf,.pdf">
+<label for="mode">Reading style</label><select id="mode"><option value="original">Original reader — exact text</option><option value="tutor">Friendly tutor — explained simply</option></select>
+<label for="voice">Voice available on this device</label><select id="voice"><option>Loading device voices…</option></select>
+<label for="rate">Speaking speed</label><select id="rate"><option value="0.85">Relaxed</option><option value="1" selected>Normal</option><option value="1.15">Fast</option></select>
+<button id="prepare">Prepare preview</button><div id="status" role="status"></div></section>
+<section class="card"><h2>Listen</h2><small id="source"></small><pre id="script">Upload a PDF to prepare your first audio preview.</pre>
+<div class="actions"><button id="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button></div>
+<p><small>Uses your phone's built-in speech engine. Voice quality and offline support depend on your device and browser. Keep this page open during playback. Tutor mode requires a configured server API key.</small></p></section></main>
+<script>
+const $=id=>document.getElementById(id);let script="";
+function voices(){const list=speechSynthesis.getVoices();$('voice').replaceChildren();list.forEach((v,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=v.name+' ('+v.lang+')';$('voice').append(o)});if(!list.length){const o=document.createElement('option');o.textContent='Default voice';$('voice').append(o)}}
+if('speechSynthesis' in window){voices();speechSynthesis.onvoiceschanged=voices}else{$('status').textContent='Speech playback is not supported in this browser'}
+$('prepare').onclick=async()=>{const f=$('pdf').files[0];if(!f){$('status').textContent='Please choose a PDF';return}if(f.size>15*1024*1024){$('status').textContent='PDF must be 15 MB or less';return}
+$('prepare').disabled=true;$('status').textContent='Preparing preview…';$('play').disabled=true;
+try{const form=new FormData();form.append('file',f);const mode=$('mode').value;const res=await fetch(mode==='tutor'?'/tutor-preview':'/preview-text',{method:'POST',body:form});const data=await res.json();if(!res.ok)throw Error(data.detail||'Could not process PDF');
+script=mode==='tutor'?data.explanation:data.preview;$('script').textContent=script;$('source').textContent=mode==='tutor'?'AI-generated explanation — verify against the PDF':'Original PDF excerpt';$('play').disabled=false;$('stop').disabled=false;$('status').textContent='Ready to listen'}
+catch(e){$('status').textContent=e.message;$('status').className='error'}finally{$('prepare').disabled=false}};
+$('play').onclick=()=>{if(!('speechSynthesis' in window)||!script)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(script);const vs=speechSynthesis.getVoices();u.voice=vs[Number($('voice').value)]||null;u.rate=Number($('rate').value);speechSynthesis.speak(u)};
+$('stop').onclick=()=>speechSynthesis.cancel();
+</script></body></html>
