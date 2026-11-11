@@ -19,7 +19,7 @@ small{color:#637087}.error{color:#b42318}#status{min-height:1.5em}
 <div class="actions"><button id="play" disabled>▶ Play</button><button id="pause" disabled>⏸ Pause</button><button id="stop" disabled>■ Stop</button><button id="next" disabled>Next page →</button></div><p><small id="speechstatus" role="status">Audio idle</small></p>
 <p><small>Uses your phone's built-in speech engine. Voice quality and offline support depend on your device and browser. Keep this page open during playback. Tutor mode requires a configured server API key.</small></p></section></main>
 <script>
-const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;let playbackGeneration=0;let neuralObjectURL=null;
+const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;let playbackGeneration=0;let neuralObjectURL=null;let preparationGeneration=0;
 function setStatus(message,isError=false){$('status').textContent=message;$('status').className=isError?'error':''}
 function voices(){
  if(!('speechSynthesis' in window))return;
@@ -85,14 +85,15 @@ $('pause').onclick=()=>{
 };
 $('prepare').onclick=async()=>{
  const f=$('pdf').files[0];if(!f){setStatus('Please choose a PDF',true);return}
+ const requestGeneration=++preparationGeneration;
  if(f.size>15*1024*1024){setStatus('PDF must be 15 MB or less',true);return}
- stopSpeech();documentPages=[];$('pagecontrols').hidden=true;
+ stopSpeech();documentPages=[];script='';$('script').textContent='Preparing document…';$('source').textContent='';$('pagecontrols').hidden=true;$('neuralplay').disabled=true;
  $('prepare').disabled=true;setStatus('Extracting document text…');$('play').disabled=true;$('pause').disabled=true;$('next').disabled=true;
  try{
   const form=new FormData();form.append('file',f);
   const mode=$('mode').value;
   const res=await fetch(mode==='tutor'?'/tutor-preview-text':'/document-text',{method:'POST',body:form});
-  const data=await res.json();if(!res.ok)throw Error(res.status===404?'The server has not deployed the full-document update yet. Please try again after the new release is live.':(data.detail||'Could not process PDF'));
+  const data=await res.json();if(requestGeneration!==preparationGeneration)return;if(!res.ok)throw Error(res.status===404?'The server has not deployed the full-document update yet. Please try again after the new release is live.':(data.detail||'Could not process PDF'));
   if(mode==='original'){
    documentPages=data.pages||[];if(!documentPages.length)throw Error('No readable pages found');
    $('page').replaceChildren();
@@ -108,8 +109,10 @@ $('prepare').onclick=async()=>{
   if(!script||!script.trim())throw Error('No readable text found');
   $('play').disabled=false;$('pause').disabled=false;$('stop').disabled=false;$('neuralplay').disabled=false;
   setStatus(mode==='original'?'Document ready · '+documentPages.length+' readable pages':'Tutor preview ready');
- }catch(e){setStatus(e.message,true)}finally{$('prepare').disabled=false}
+ }catch(e){if(requestGeneration===preparationGeneration)setStatus(e.message,true)}finally{if(requestGeneration===preparationGeneration)$('prepare').disabled=false}
 };
+$('pdf').addEventListener('change',()=>{preparationGeneration++;stopSpeech();documentPages=[];script='';$('script').textContent='Select Prepare document to load this PDF.';$('pagecontrols').hidden=true;$('play').disabled=true;$('pause').disabled=true;$('next').disabled=true;$('neuralplay').disabled=true;$('prepare').disabled=false});
+$('mode').addEventListener('change',()=>{preparationGeneration++;stopSpeech();documentPages=[];script='';$('script').textContent='Select Prepare document to load this reading style.';$('pagecontrols').hidden=true;$('play').disabled=true;$('pause').disabled=true;$('next').disabled=true;$('neuralplay').disabled=true;$('prepare').disabled=false});
 $('neuralplay').onclick=async()=>{
  if(!script.trim())return;
  stopSpeech();const button=$('neuralplay');button.disabled=true;setStatus('Generating neural audio for the first 800 characters of this page…');
