@@ -1,12 +1,12 @@
 import os
 import tempfile
 from pathlib import Path
-from fastapi import FastAPI, File, HTTPException, UploadFile, Form
+from fastapi import FastAPI, File, HTTPException, UploadFile, Form, Header
 from fastapi.responses import Response, FileResponse
 from .pdf_processor import extract_pages
 from .narration import preview_text, synthesize
 from .tutor import select_source, explain_as_tutor
-from .neural_speech import NeuralSpeechRequest, synthesize_neural
+from .neural_speech import NeuralSpeechRequest, synthesize_neural, neural_enabled, authorize_neural
 
 app = FastAPI(title="Reading Assistant API", version="0.1.0")
 
@@ -93,9 +93,10 @@ async def tutor_preview_audio(file: UploadFile = File(...), voice_id: str = Form
 
 @app.get("/neural-status")
 def neural_status():
-    return {"enabled": os.getenv("ENABLE_NEURAL_TTS") == "1" and bool(os.getenv("KOKORO_API_URL"))}
+    return {"enabled": neural_enabled(), "requires_access_token": True}
 
 @app.post("/neural-speech")
-async def neural_speech_endpoint(request: NeuralSpeechRequest):
+async def neural_speech_endpoint(request: NeuralSpeechRequest, x_neural_access_token: str | None = Header(default=None)):
+    authorize_neural(x_neural_access_token)
     audio = await synthesize_neural(request)
-    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+    return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
