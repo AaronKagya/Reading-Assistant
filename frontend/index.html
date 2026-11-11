@@ -19,7 +19,7 @@ small{color:#637087}.error{color:#b42318}#status{min-height:1.5em}
 <div class="actions"><button id="play" disabled>▶ Play</button><button id="pause" disabled>⏸ Pause</button><button id="stop" disabled>■ Stop</button><button id="next" disabled>Next page →</button></div><p><small id="speechstatus" role="status">Audio idle</small></p>
 <p><small>Uses your phone's built-in speech engine. Voice quality and offline support depend on your device and browser. Keep this page open during playback. Tutor mode requires a configured server API key.</small></p></section></main>
 <script>
-const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;
+const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;let playbackGeneration=0;
 function setStatus(message,isError=false){$('status').textContent=message;$('status').className=isError?'error':''}
 function voices(){
  if(!('speechSynthesis' in window))return;
@@ -36,7 +36,7 @@ function voices(){
  else if(preferred.length)$('voice').value=preferred[0].voiceURI;
  selectedVoiceURI=$('voice').value;
 }
-function stopSpeech(){active=false;paused=false;readingDocument=false;chunkIndex=0;utterance=null;if('speechSynthesis' in window)window.speechSynthesis.cancel();$('speechstatus').textContent='Stopped';$('pause').textContent='⏸ Pause'}
+function stopSpeech(){playbackGeneration++;active=false;paused=false;readingDocument=false;chunkIndex=0;utterance=null;if('speechSynthesis' in window)window.speechSynthesis.cancel();$('speechstatus').textContent='Stopped';$('pause').textContent='⏸ Pause'}
 function splitSpeech(text){
  const sentences=text.match(/[^.!?;\n]+[.!?;\n]*/g)||[text],out=[];
  for(const sentence of sentences){
@@ -49,13 +49,13 @@ function splitSpeech(text){
 function speakNext(){
  if(!active)return;
  if(chunkIndex>=chunks.length){if(readingDocument&&pageIndex+1<documentPages.length){pageIndex++;showPage();chunks=splitSpeech(script);chunkIndex=0;speakNext();return}active=false;readingDocument=false;$('speechstatus').textContent='Finished';return}
- const u=new SpeechSynthesisUtterance(chunks[chunkIndex]);utterance=u;
+ const u=new SpeechSynthesisUtterance(chunks[chunkIndex]);utterance=u;const generation=playbackGeneration;
  const vs=window.speechSynthesis.getVoices(),v=vs.find(x=>x.voiceURI===$('voice').value);
  if(v){u.voice=v;u.lang=v.lang}else{u.lang='en-US'}
  u.rate=Number($('rate').value);u.pitch=1;u.volume=1;
  u.onstart=()=>{$('speechstatus').textContent='Speaking part '+(chunkIndex+1)+' of '+chunks.length+(readingDocument?' · page '+documentPages[pageIndex].page:'')};
- u.onend=()=>{if(!active)return;chunkIndex++;speakNext()};
- u.onerror=e=>{if(!active)return;active=false;setStatus('Speech error: '+(e.error||'unknown')+'. Try another installed voice or Chrome/Edge.',true);$('speechstatus').textContent='Playback failed'};
+ u.onend=()=>{if(!active||generation!==playbackGeneration)return;chunkIndex++;speakNext()};
+ u.onerror=e=>{if(!active||generation!==playbackGeneration)return;active=false;setStatus('Speech error: '+(e.error||'unknown')+'. Try another installed voice or Chrome/Edge.',true);$('speechstatus').textContent='Playback failed'};
  window.speechSynthesis.speak(u);
 }
 function startSpeech(text){
@@ -73,8 +73,8 @@ $('testvoice').onclick=()=>startSpeech('Hello! This is Reading Assistant. Your c
 function showPage(){
  if(!documentPages.length)return;
  const page=documentPages[pageIndex];script=page.text;$('script').textContent=script;
- $('page').value=String(pageIndex);$('progress').textContent='Page '+page.page+' · '+(pageIndex+1)+' of '+documentPages.length+' readable pages';
- try{sessionStorage.setItem('reading-assistant-page:'+($('pdf').files[0]?.name||''),String(pageIndex))}catch(e){}
+ $('page').value=String(pageIndex);$('next').disabled=pageIndex>=documentPages.length-1;$('progress').textContent='Page '+page.page+' · '+(pageIndex+1)+' of '+documentPages.length+' readable pages';
+ try{localStorage.setItem('reading-assistant-page:'+($('pdf').files[0]?.name||'')+':'+($('pdf').files[0]?.size||''),String(pageIndex))}catch(e){}
 }
 $('page').onchange=()=>{stopSpeech();pageIndex=Number($('page').value);showPage()};
 $('next').onclick=()=>{if(pageIndex+1>=documentPages.length)return;stopSpeech();pageIndex++;showPage();startSpeech(script)};
@@ -92,15 +92,15 @@ $('prepare').onclick=async()=>{
   const form=new FormData();form.append('file',f);
   const mode=$('mode').value;
   const res=await fetch(mode==='tutor'?'/tutor-preview-text':'/document-text',{method:'POST',body:form});
-  const data=await res.json();if(!res.ok)throw Error(data.detail||'Could not process PDF');
+  const data=await res.json();if(!res.ok)throw Error(res.status===404?'The server has not deployed the full-document update yet. Please try again after the new release is live.':(data.detail||'Could not process PDF'));
   if(mode==='original'){
    documentPages=data.pages||[];if(!documentPages.length)throw Error('No readable pages found');
    $('page').replaceChildren();
    documentPages.forEach((p,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent='Page '+p.page;$('page').append(o)});
-   try{pageIndex=Math.min(Math.max(Number(sessionStorage.getItem('reading-assistant-page:'+f.name))||0,0),documentPages.length-1)}catch(e){pageIndex=0}
+   try{pageIndex=Math.min(Math.max(Number(localStorage.getItem('reading-assistant-page:'+f.name+':'+f.size))||0,0),documentPages.length-1)}catch(e){pageIndex=0}
    $('pagecontrols').hidden=false;showPage();
    $('source').textContent='Original PDF · full document';
-   $('next').disabled=documentPages.length<2;
+   $('next').disabled=pageIndex>=documentPages.length-1;
   }else{
    script=data.tutor_script;
    $('script').textContent=script;$('source').textContent='AI-generated explanation of a short excerpt — verify against the PDF';
