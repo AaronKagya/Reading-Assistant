@@ -14,12 +14,12 @@ small{color:#637087}.error{color:#b42318}#status{min-height:1.5em}
 <label for="mode">Reading style</label><select id="mode"><option value="original">Original reader — exact text</option><option value="tutor">Friendly tutor — explained simply</option></select>
 <label for="voice">Voice available on this device</label><select id="voice"><option>Loading device voices…</option></select>
 <label for="rate">Speaking speed</label><select id="rate"><option value="0.85">Relaxed</option><option value="1" selected>Normal</option><option value="1.15">Fast</option></select>
-<button id="testvoice" type="button">🔊 Test voice on this PC</button><button id="prepare">Prepare preview</button><div id="status" role="status"></div></section>
-<section class="card"><h2>Listen</h2><small id="source"></small><pre id="script">Upload a PDF to prepare your first audio preview.</pre>
-<div class="actions"><button id="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button></div><p><small id="speechstatus" role="status">Audio idle</small></p>
+<button id="testvoice" type="button">🔊 Test voice on this PC</button><button id="prepare">Prepare document</button><div id="status" role="status"></div></section>
+<section class="card"><h2>Listen</h2><div id="pagecontrols" hidden><label for="page">Document page</label><select id="page"></select><small id="progress"></small></div><small id="source"></small><pre id="script">Upload a PDF to prepare your first audio preview.</pre>
+<div class="actions"><button id="play" disabled>▶ Play</button><button id="pause" disabled>⏸ Pause</button><button id="stop" disabled>■ Stop</button><button id="next" disabled>Next page →</button></div><p><small id="speechstatus" role="status">Audio idle</small></p>
 <p><small>Uses your phone's built-in speech engine. Voice quality and offline support depend on your device and browser. Keep this page open during playback. Tutor mode requires a configured server API key.</small></p></section></main>
 <script>
-const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";
+const $=id=>document.getElementById(id);let script="";let chunks=[],chunkIndex=0,active=false,utterance=null,selectedVoiceURI="";let documentPages=[],pageIndex=0,readingDocument=false,paused=false;
 function setStatus(message,isError=false){$('status').textContent=message;$('status').className=isError?'error':''}
 function voices(){
  if(!('speechSynthesis' in window))return;
@@ -36,7 +36,7 @@ function voices(){
  else if(preferred.length)$('voice').value=preferred[0].voiceURI;
  selectedVoiceURI=$('voice').value;
 }
-function stopSpeech(){active=false;chunkIndex=0;utterance=null;if('speechSynthesis' in window)window.speechSynthesis.cancel();$('speechstatus').textContent='Stopped'}
+function stopSpeech(){active=false;paused=false;readingDocument=false;chunkIndex=0;utterance=null;if('speechSynthesis' in window)window.speechSynthesis.cancel();$('speechstatus').textContent='Stopped';$('pause').textContent='⏸ Pause'}
 function splitSpeech(text){
  const sentences=text.match(/[^.!?;\n]+[.!?;\n]*/g)||[text],out=[];
  for(const sentence of sentences){
@@ -48,19 +48,19 @@ function splitSpeech(text){
 }
 function speakNext(){
  if(!active)return;
- if(chunkIndex>=chunks.length){active=false;$('speechstatus').textContent='Finished';return}
+ if(chunkIndex>=chunks.length){if(readingDocument&&pageIndex+1<documentPages.length){pageIndex++;showPage();chunks=splitSpeech(script);chunkIndex=0;speakNext();return}active=false;readingDocument=false;$('speechstatus').textContent='Finished';return}
  const u=new SpeechSynthesisUtterance(chunks[chunkIndex]);utterance=u;
  const vs=window.speechSynthesis.getVoices(),v=vs.find(x=>x.voiceURI===$('voice').value);
  if(v){u.voice=v;u.lang=v.lang}else{u.lang='en-US'}
  u.rate=Number($('rate').value);u.pitch=1;u.volume=1;
- u.onstart=()=>{$('speechstatus').textContent='Speaking part '+(chunkIndex+1)+' of '+chunks.length};
+ u.onstart=()=>{$('speechstatus').textContent='Speaking part '+(chunkIndex+1)+' of '+chunks.length+(readingDocument?' · page '+documentPages[pageIndex].page:'')};
  u.onend=()=>{if(!active)return;chunkIndex++;speakNext()};
  u.onerror=e=>{if(!active)return;active=false;setStatus('Speech error: '+(e.error||'unknown')+'. Try another installed voice or Chrome/Edge.',true);$('speechstatus').textContent='Playback failed'};
  window.speechSynthesis.speak(u);
 }
 function startSpeech(text){
  if(!('speechSynthesis' in window)){setStatus('Speech playback is not supported in this browser',true);return}
- stopSpeech();chunks=splitSpeech(text);chunkIndex=0;active=true;
+ stopSpeech();readingDocument=documentPages.length>0&&text===script;chunks=splitSpeech(text);chunkIndex=0;active=true;
  if(!chunks.length){setStatus('No readable text to speak',true);active=false;return}
  setStatus('Speech playback started');speakNext();
 }
@@ -70,11 +70,46 @@ if('speechSynthesis' in window){
 }else setStatus('Speech playback is not supported. Try Chrome or Edge.',true);
 $('voice').addEventListener('change',()=>{selectedVoiceURI=$('voice').value});
 $('testvoice').onclick=()=>startSpeech('Hello! This is Reading Assistant. Your computer voice is working.');
-$('prepare').onclick=async()=>{const f=$('pdf').files[0];if(!f){$('status').textContent='Please choose a PDF';return}if(f.size>15*1024*1024){$('status').textContent='PDF must be 15 MB or less';return}
-$('prepare').disabled=true;$('status').textContent='Preparing preview…';$('play').disabled=true;
-try{const form=new FormData();form.append('file',f);const mode=$('mode').value;const res=await fetch(mode==='tutor'?'/tutor-preview-text':'/preview-text',{method:'POST',body:form});const data=await res.json();if(!res.ok)throw Error(data.detail||'Could not process PDF');
-script=mode==='tutor'?data.tutor_script:data.preview;if(!script||!script.trim())throw Error('No readable text found');stopSpeech();$('script').textContent=script;$('source').textContent=mode==='tutor'?'AI-generated explanation — verify against the PDF':'Original PDF excerpt';$('play').disabled=false;$('stop').disabled=false;$('status').textContent='Ready to listen'}
-catch(e){$('status').textContent=e.message;$('status').className='error'}finally{$('prepare').disabled=false}};
+function showPage(){
+ if(!documentPages.length)return;
+ const page=documentPages[pageIndex];script=page.text;$('script').textContent=script;
+ $('page').value=String(pageIndex);$('progress').textContent='Page '+page.page+' · '+(pageIndex+1)+' of '+documentPages.length+' readable pages';
+ try{sessionStorage.setItem('reading-assistant-page:'+($('pdf').files[0]?.name||''),String(pageIndex))}catch(e){}
+}
+$('page').onchange=()=>{stopSpeech();pageIndex=Number($('page').value);showPage()};
+$('next').onclick=()=>{if(pageIndex+1>=documentPages.length)return;stopSpeech();pageIndex++;showPage();startSpeech(script)};
+$('pause').onclick=()=>{
+ if(!('speechSynthesis' in window)||!active)return;
+ if(paused){speechSynthesis.resume();paused=false;$('pause').textContent='⏸ Pause';$('speechstatus').textContent='Resumed'}
+ else{speechSynthesis.pause();paused=true;$('pause').textContent='▶ Resume';$('speechstatus').textContent='Paused'}
+};
+$('prepare').onclick=async()=>{
+ const f=$('pdf').files[0];if(!f){setStatus('Please choose a PDF',true);return}
+ if(f.size>15*1024*1024){setStatus('PDF must be 15 MB or less',true);return}
+ stopSpeech();documentPages=[];$('pagecontrols').hidden=true;
+ $('prepare').disabled=true;setStatus('Extracting document text…');$('play').disabled=true;$('pause').disabled=true;$('next').disabled=true;
+ try{
+  const form=new FormData();form.append('file',f);
+  const mode=$('mode').value;
+  const res=await fetch(mode==='tutor'?'/tutor-preview-text':'/document-text',{method:'POST',body:form});
+  const data=await res.json();if(!res.ok)throw Error(data.detail||'Could not process PDF');
+  if(mode==='original'){
+   documentPages=data.pages||[];if(!documentPages.length)throw Error('No readable pages found');
+   $('page').replaceChildren();
+   documentPages.forEach((p,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent='Page '+p.page;$('page').append(o)});
+   try{pageIndex=Math.min(Math.max(Number(sessionStorage.getItem('reading-assistant-page:'+f.name))||0,0),documentPages.length-1)}catch(e){pageIndex=0}
+   $('pagecontrols').hidden=false;showPage();
+   $('source').textContent='Original PDF · full document';
+   $('next').disabled=documentPages.length<2;
+  }else{
+   script=data.tutor_script;
+   $('script').textContent=script;$('source').textContent='AI-generated explanation of a short excerpt — verify against the PDF';
+  }
+  if(!script||!script.trim())throw Error('No readable text found');
+  $('play').disabled=false;$('pause').disabled=false;$('stop').disabled=false;
+  setStatus(mode==='original'?'Document ready · '+documentPages.length+' readable pages':'Tutor preview ready');
+ }catch(e){setStatus(e.message,true)}finally{$('prepare').disabled=false}
+};
 $('play').onclick=()=>startSpeech(script);
 $('stop').onclick=stopSpeech;
 window.addEventListener('pagehide',stopSpeech);
